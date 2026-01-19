@@ -293,6 +293,18 @@ func (m *ResultsModel) setViewMode(mode ViewMode) {
 	m.viewMode = mode
 	m.viewModeBar.SetActive(int(mode))
 	m.updateHelpItems()
+
+	// Rebuild tree data when switching between Tree and Aggregated views
+	if mode == AggregatedView {
+		m.rebuildAggregatedTree()
+	} else if mode == TreeView {
+		// Rebuild per-agent tree view
+		if m.currentTab == ErrorsTab {
+			m.rebuildTreeFromErrors()
+		} else {
+			m.rebuildTreeFromResults()
+		}
+	}
 }
 
 // navigateUp moves selection up
@@ -747,10 +759,6 @@ func findLabel(m map[string]interface{}) string {
 
 // rebuildAggregatedTree builds the aggregated tree view
 func (m *ResultsModel) rebuildAggregatedTree() {
-	if m.viewMode != AggregatedView {
-		return
-	}
-
 	totalAgents := len(m.agentTrees)
 	if totalAgents == 0 {
 		return
