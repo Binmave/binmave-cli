@@ -82,7 +82,7 @@ func (t *TabBar) Render() string {
 		}
 	}
 
-	return strings.Join(tabs, ui.TabGapStyle.Render(""))
+	return strings.Join(tabs, "  ")
 }
 
 // ViewModeBar renders the view mode selector (Table/Tree/Aggregated)

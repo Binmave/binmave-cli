@@ -70,9 +70,8 @@ var (
 var (
 	ActiveTabStyle = lipgloss.NewStyle().
 			Bold(true).
-			Foreground(Primary).
-			Border(lipgloss.NormalBorder(), false, false, true, false).
-			BorderForeground(Primary).
+			Foreground(Foreground).
+			Background(Primary).
 			Padding(0, 1)
 
 	InactiveTabStyle = lipgloss.NewStyle().
@@ -80,7 +79,7 @@ var (
 				Padding(0, 1)
 
 	TabGapStyle = lipgloss.NewStyle().
-			Padding(0, 1)
+			Width(2)
 )
 
 // Tree styles
