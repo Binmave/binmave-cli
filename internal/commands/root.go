@@ -47,6 +47,8 @@ func init() {
 	rootCmd.AddCommand(scriptsCmd)
 	rootCmd.AddCommand(executionsCmd)
 	rootCmd.AddCommand(watchCmd)
+	rootCmd.AddCommand(resultsCmd)
+	rootCmd.AddCommand(compareCmd)
 	rootCmd.AddCommand(versionCmd)
 }
 

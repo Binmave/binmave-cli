@@ -277,3 +277,45 @@ func (c *Client) ListRecentExecutions(ctx context.Context, limit int) ([]Executi
 
 	return executions, nil
 }
+
+// GetAllExecutionResults returns all results for an execution (fetches all pages)
+func (c *Client) GetAllExecutionResults(ctx context.Context, id string) ([]ExecutionResult, error) {
+	var allResults []ExecutionResult
+	page := 1
+	pageSize := 100
+
+	for {
+		results, err := c.GetExecutionResults(ctx, id, page, pageSize)
+		if err != nil {
+			return nil, err
+		}
+
+		allResults = append(allResults, results.Results...)
+
+		// Check if we have all results
+		if len(allResults) >= results.TotalCount || len(results.Results) < pageSize {
+			break
+		}
+
+		page++
+	}
+
+	return allResults, nil
+}
+
+// GetExecutionErrors returns all error results for an execution
+func (c *Client) GetExecutionErrors(ctx context.Context, id string) ([]ExecutionResult, error) {
+	allResults, err := c.GetAllExecutionResults(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+
+	var errors []ExecutionResult
+	for _, r := range allResults {
+		if r.HasError {
+			errors = append(errors, r)
+		}
+	}
+
+	return errors, nil
+}
