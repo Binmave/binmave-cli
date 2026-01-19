@@ -300,8 +300,16 @@ func (m *ResultsModel) setViewMode(mode ViewMode) {
 	m.viewModeBar.SetActive(int(mode))
 	m.updateHelpItems()
 
-	// Rebuild tree data when switching between Tree and Aggregated views
+	// Rebuild tree data when switching views
 	if mode == AggregatedView {
+		// Ensure we have agent trees first, then build aggregated
+		if len(m.agentTrees) == 0 {
+			if m.currentTab == ErrorsTab {
+				m.rebuildTreeFromErrors()
+			} else {
+				m.rebuildTreeFromResults()
+			}
+		}
 		m.rebuildAggregatedTree()
 	} else if mode == TreeView {
 		// Rebuild per-agent tree view
@@ -390,11 +398,16 @@ func (m *ResultsModel) processResults() {
 	// Build table rows from JSON
 	m.buildTableData()
 
-	// Build tree data
-	m.rebuildTreeFromResults()
-
-	// Detect if tree view is applicable
+	// Detect if tree view is applicable (before building trees)
 	m.detectTreeApplicability()
+
+	// Build tree data based on current view mode
+	if m.viewMode == AggregatedView {
+		m.rebuildTreeFromResults() // Need agent trees first
+		m.rebuildAggregatedTree()
+	} else if m.viewMode == TreeView {
+		m.rebuildTreeFromResults()
+	}
 }
 
 // buildTableData parses JSON results into flat table rows
@@ -677,7 +690,7 @@ func hasSelfReferentialFields(rows []interface{}) bool {
 	return false
 }
 
-// rebuildTreeFromResults builds tree view from results
+// rebuildTreeFromResults builds tree view from results (per-agent trees)
 func (m *ResultsModel) rebuildTreeFromResults() {
 	m.agentTrees = nil
 
@@ -689,8 +702,8 @@ func (m *ResultsModel) rebuildTreeFromResults() {
 		}
 	}
 
+	// Set per-agent trees for Tree view (NOT aggregated)
 	m.treeView.SetAgents(m.agentTrees)
-	m.rebuildAggregatedTree()
 }
 
 // rebuildTreeFromErrors builds tree view from error results
