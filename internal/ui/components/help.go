@@ -67,6 +67,7 @@ func TableViewHelpItems() []HelpItem {
 	return []HelpItem{
 		{Key: "↑↓", Desc: "Navigate"},
 		{Key: "Enter", Desc: "Details"},
+		{Key: "/", Desc: "Search"},
 		{Key: "Tab", Desc: "Tabs"},
 		{Key: "1/2/3", Desc: "View"},
 		{Key: "q", Desc: "Quit"},
@@ -77,8 +78,8 @@ func TableViewHelpItems() []HelpItem {
 func TreeViewHelpItems() []HelpItem {
 	return []HelpItem{
 		{Key: "↑↓←→", Desc: "Navigate/Expand"},
-		{Key: "e", Desc: "Expand All"},
-		{Key: "c", Desc: "Collapse All"},
+		{Key: "e/c", Desc: "Expand/Collapse All"},
+		{Key: "/", Desc: "Search"},
 		{Key: "Tab", Desc: "Tabs"},
 		{Key: "1/2/3", Desc: "View"},
 		{Key: "q", Desc: "Quit"},
@@ -89,7 +90,8 @@ func TreeViewHelpItems() []HelpItem {
 func AggregatedViewHelpItems() []HelpItem {
 	return []HelpItem{
 		{Key: "↑↓←→", Desc: "Navigate/Expand"},
-		{Key: "a", Desc: "Toggle Anomalies"},
+		{Key: "a", Desc: "Anomalies"},
+		{Key: "/", Desc: "Search"},
 		{Key: "Tab", Desc: "Tabs"},
 		{Key: "1/2/3", Desc: "View"},
 		{Key: "q", Desc: "Quit"},

@@ -110,7 +110,17 @@ Reference: `hasSelfReferentialFields()` in `results.go` mirrors the web frontend
 |-----|--------|
 | `Tab` | Switch Results/Errors tabs |
 | `1/2/3` | Switch view modes |
+| `/` | Enter search mode |
+| `Esc` | Clear search (when search is active) |
 | `q` | Quit |
+
+### Search Mode
+| Key | Action |
+|-----|--------|
+| Type | Filter results in real-time |
+| `Enter` | Exit search mode (keep filter) |
+| `Esc` | Clear search and exit |
+| `Backspace` | Delete last character |
 
 ### Table View
 | Key | Action |
@@ -126,6 +136,24 @@ Reference: `hasSelfReferentialFields()` in `results.go` mirrors the web frontend
 | `e` | Expand all |
 | `c` | Collapse all |
 | `a` | Toggle anomalies (Aggregated only) |
+
+## Search/Filter Feature
+
+Press `/` to enter search mode. The search filters across all views:
+
+### Table View
+- Filters rows where any column value contains the search term
+- Shows "X/Y matching" count
+- Case-insensitive matching
+
+### Tree View
+- Filters to nodes whose labels contain the search term
+- Keeps parent nodes for context
+- Auto-expands to show matches
+
+### Aggregated View
+- Same filtering as Tree View
+- Works with anomaly filtering
 
 ## Dependencies
 
@@ -175,7 +203,6 @@ Potential features to maintain web parity:
 
 | Feature | Web Reference |
 |---------|---------------|
-| Search/filter in trees | Tree view search box |
 | Export to CSV/JSON | Export button in results |
 | Agent filtering | Filter dropdown in results |
 | Script input prompts | Script execution modal |
@@ -186,6 +213,7 @@ Potential features to maintain web parity:
 - **v0.1.0** - Initial release with basic commands
 - **v0.2.0** - Added `scripts run` and `watch` commands
 - **v0.3.x** - Interactive TUI results viewer with Table/Tree/Aggregated views
+- **v0.3.15** - Added search/filter feature across all views
 
 ---
 

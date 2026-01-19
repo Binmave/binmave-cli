@@ -390,3 +390,8 @@ func (t *TreeView) GetSelectedAgent() *AgentTree {
 	}
 	return t.flatNodes[t.selectedIdx].agent
 }
+
+// GetAgents returns all agents in the tree view
+func (t *TreeView) GetAgents() []*AgentTree {
+	return t.agents
+}

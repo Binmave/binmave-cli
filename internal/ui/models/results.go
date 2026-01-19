@@ -59,9 +59,10 @@ type ResultsModel struct {
 	aggregateTree []*components.TreeNode
 
 	// Table data (parsed from JSON)
-	tableRows    []TableRow
-	tableColumns []string
-	isTreeData   bool // True if data is hierarchical (tree/aggregated views applicable)
+	tableRows         []TableRow
+	filteredTableRows []TableRow // Rows after search filter applied
+	tableColumns      []string
+	isTreeData        bool // True if data is hierarchical (tree/aggregated views applicable)
 
 	// UI State
 	viewMode         ViewMode
@@ -87,6 +88,11 @@ type ResultsModel struct {
 	showingDetail  bool
 	detailViewport viewport.Model
 	detailContent  string
+
+	// Search state
+	searchMode    bool
+	searchQuery   string
+	searchMatches int // Number of matches found
 
 	// Dimensions
 	width  int
@@ -218,9 +224,53 @@ func (m *ResultsModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 
+		// Handle search mode
+		if m.searchMode {
+			switch msg.String() {
+			case "esc":
+				// Exit search mode and clear query
+				m.searchMode = false
+				m.searchQuery = ""
+				m.applySearchFilter()
+				return m, nil
+			case "enter":
+				// Exit search mode but keep query
+				m.searchMode = false
+				return m, nil
+			case "backspace":
+				if len(m.searchQuery) > 0 {
+					m.searchQuery = m.searchQuery[:len(m.searchQuery)-1]
+					m.applySearchFilter()
+				}
+				return m, nil
+			case "ctrl+c":
+				return m, tea.Quit
+			default:
+				// Add character to search query (filter to printable chars)
+				if len(msg.String()) == 1 && msg.String()[0] >= 32 && msg.String()[0] < 127 {
+					m.searchQuery += msg.String()
+					m.applySearchFilter()
+				}
+				return m, nil
+			}
+		}
+
 		switch msg.String() {
 		case "q", "ctrl+c":
 			return m, tea.Quit
+
+		case "/":
+			// Enter search mode
+			m.searchMode = true
+			return m, nil
+
+		case "esc":
+			// Clear search if active
+			if m.searchQuery != "" {
+				m.searchQuery = ""
+				m.applySearchFilter()
+				return m, nil
+			}
 
 		case "tab":
 			m.nextTab()
@@ -348,6 +398,11 @@ func (m *ResultsModel) nextTab() {
 	} else {
 		m.rebuildTreeFromResults()
 	}
+
+	// Re-apply search filter if active
+	if m.searchQuery != "" {
+		m.applySearchFilter()
+	}
 }
 
 // setViewMode changes the view mode
@@ -375,6 +430,11 @@ func (m *ResultsModel) setViewMode(mode ViewMode) {
 			m.rebuildTreeFromResults()
 		}
 	}
+
+	// Re-apply search filter if active
+	if m.searchQuery != "" {
+		m.applySearchFilter()
+	}
 }
 
 // navigateUp moves selection up
@@ -394,7 +454,7 @@ func (m *ResultsModel) navigateUp() {
 func (m *ResultsModel) navigateDown() {
 	switch m.viewMode {
 	case TableView:
-		maxIdx := len(m.tableRows) - 1
+		maxIdx := len(m.filteredTableRows) - 1
 		if m.tableSelectedIdx < maxIdx {
 			m.tableSelectedIdx++
 			m.ensureTableVisible()
@@ -414,11 +474,11 @@ func (m *ResultsModel) toggleExpand() {
 
 // showDetailView shows the full details of the selected row
 func (m *ResultsModel) showDetailView() {
-	if m.tableSelectedIdx < 0 || m.tableSelectedIdx >= len(m.tableRows) {
+	if m.tableSelectedIdx < 0 || m.tableSelectedIdx >= len(m.filteredTableRows) {
 		return
 	}
 
-	row := m.tableRows[m.tableSelectedIdx]
+	row := m.filteredTableRows[m.tableSelectedIdx]
 
 	// Build detail content
 	var b strings.Builder
@@ -668,6 +728,166 @@ func (m *ResultsModel) buildTableData() {
 
 	// Sort columns with common ones first
 	m.tableColumns = sortColumns(columnSet)
+
+	// Initialize filtered rows (apply current search if any)
+	if m.searchQuery != "" {
+		m.applySearchFilter()
+	} else {
+		m.filteredTableRows = m.tableRows
+		m.searchMatches = len(m.tableRows)
+	}
+}
+
+// applySearchFilter filters data based on search query
+func (m *ResultsModel) applySearchFilter() {
+	query := strings.ToLower(m.searchQuery)
+
+	if query == "" {
+		// No filter - show all
+		m.filteredTableRows = m.tableRows
+		m.searchMatches = len(m.tableRows)
+
+		// Reset tree view to show all
+		if m.viewMode == TreeView {
+			m.rebuildTreeFromResults()
+		} else if m.viewMode == AggregatedView {
+			m.rebuildAggregatedTree()
+		}
+		return
+	}
+
+	// Filter table rows
+	m.filteredTableRows = nil
+	for _, row := range m.tableRows {
+		if m.rowMatchesSearch(row, query) {
+			m.filteredTableRows = append(m.filteredTableRows, row)
+		}
+	}
+	m.searchMatches = len(m.filteredTableRows)
+
+	// Reset selection if out of bounds
+	if m.tableSelectedIdx >= len(m.filteredTableRows) {
+		m.tableSelectedIdx = 0
+		m.tableScrollOffset = 0
+	}
+
+	// For tree views, filter and rebuild
+	if m.viewMode == TreeView || m.viewMode == AggregatedView {
+		m.filterTreeView(query)
+	}
+}
+
+// rowMatchesSearch checks if a table row matches the search query
+func (m *ResultsModel) rowMatchesSearch(row TableRow, query string) bool {
+	// Check agent name
+	if strings.Contains(strings.ToLower(row.AgentName), query) {
+		return true
+	}
+
+	// Check all column values
+	for _, value := range row.Data {
+		if strings.Contains(strings.ToLower(value), query) {
+			return true
+		}
+	}
+
+	return false
+}
+
+// filterTreeView filters tree nodes based on search query
+func (m *ResultsModel) filterTreeView(query string) {
+	if m.viewMode == AggregatedView {
+		// For aggregated view, filter the aggregated tree
+		m.rebuildAggregatedTree()
+		if len(m.aggregateTree) > 0 {
+			filteredTree := filterTreeNodes(m.aggregateTree, query)
+			// Create filtered aggregated agent
+			aggregatedAgent := &components.AgentTree{
+				AgentID:   "aggregated",
+				AgentName: fmt.Sprintf("All Agents (%d)", len(m.agentTrees)),
+				Roots:     filteredTree,
+				NodeCount: countNodes(filteredTree),
+				Expanded:  true,
+			}
+			m.treeView.SetAgents([]*components.AgentTree{aggregatedAgent})
+		}
+	} else {
+		// For tree view, filter each agent's tree
+		var filteredAgents []*components.AgentTree
+		for _, agent := range m.agentTrees {
+			filteredRoots := filterTreeNodes(agent.Roots, query)
+			if len(filteredRoots) > 0 || strings.Contains(strings.ToLower(agent.AgentName), query) {
+				filteredAgent := &components.AgentTree{
+					AgentID:   agent.AgentID,
+					AgentName: agent.AgentName,
+					Roots:     filteredRoots,
+					NodeCount: countNodes(filteredRoots),
+					Expanded:  agent.Expanded,
+				}
+				filteredAgents = append(filteredAgents, filteredAgent)
+			}
+		}
+		m.treeView.SetAgents(filteredAgents)
+	}
+
+	// Count matches for tree views
+	m.searchMatches = 0
+	for _, agent := range m.treeView.GetAgents() {
+		m.searchMatches += countMatchingNodes(agent.Roots, query)
+	}
+}
+
+// filterTreeNodes recursively filters tree nodes that match the query
+func filterTreeNodes(nodes []*components.TreeNode, query string) []*components.TreeNode {
+	var filtered []*components.TreeNode
+
+	for _, node := range nodes {
+		nodeMatches := strings.Contains(strings.ToLower(node.Label), query)
+
+		// Filter children recursively
+		filteredChildren := filterTreeNodes(node.Children, query)
+
+		// Include node if it matches or has matching children
+		if nodeMatches || len(filteredChildren) > 0 {
+			// Clone the node with filtered children
+			filteredNode := &components.TreeNode{
+				ID:         node.ID,
+				Label:      node.Label,
+				Data:       node.Data,
+				Children:   filteredChildren,
+				Expanded:   true, // Auto-expand to show matches
+				Depth:      node.Depth,
+				Count:      node.Count,
+				TotalCount: node.TotalCount,
+				AgentNames: node.AgentNames,
+				IsAnomaly:  node.IsAnomaly,
+			}
+			filtered = append(filtered, filteredNode)
+		}
+	}
+
+	return filtered
+}
+
+// countNodes counts total nodes in a tree
+func countNodes(nodes []*components.TreeNode) int {
+	count := len(nodes)
+	for _, node := range nodes {
+		count += countNodes(node.Children)
+	}
+	return count
+}
+
+// countMatchingNodes counts nodes that match the query
+func countMatchingNodes(nodes []*components.TreeNode, query string) int {
+	count := 0
+	for _, node := range nodes {
+		if strings.Contains(strings.ToLower(node.Label), query) {
+			count++
+		}
+		count += countMatchingNodes(node.Children, query)
+	}
+	return count
 }
 
 // normalizeToRows converts JSON data to array of maps
@@ -1227,7 +1447,14 @@ func (m *ResultsModel) View() string {
 		b.WriteString("\n")
 	}
 
-	b.WriteString("\n")
+	// Search bar
+	if m.searchMode || m.searchQuery != "" {
+		searchLine := m.renderSearchBar()
+		b.WriteString(searchLine)
+		b.WriteString("\n")
+	} else {
+		b.WriteString("\n")
+	}
 
 	// Tabs and view mode
 	tabsLine := m.tabBar.Render()
@@ -1284,7 +1511,10 @@ func (m *ResultsModel) renderContent(height int) string {
 
 // renderTableView renders the table view with parsed JSON columns
 func (m *ResultsModel) renderTableView(height int) string {
-	if len(m.tableRows) == 0 {
+	if len(m.filteredTableRows) == 0 {
+		if m.searchQuery != "" {
+			return ui.MutedStyle.Render("No results matching \"" + m.searchQuery + "\"")
+		}
 		return ui.MutedStyle.Render("No results to display")
 	}
 
@@ -1308,12 +1538,12 @@ func (m *ResultsModel) renderTableView(height int) string {
 
 	// Rows
 	endIdx := m.tableScrollOffset + height - 4
-	if endIdx > len(m.tableRows) {
-		endIdx = len(m.tableRows)
+	if endIdx > len(m.filteredTableRows) {
+		endIdx = len(m.filteredTableRows)
 	}
 
 	for i := m.tableScrollOffset; i < endIdx; i++ {
-		row := m.tableRows[i]
+		row := m.filteredTableRows[i]
 		isSelected := i == m.tableSelectedIdx
 
 		var rowParts []string
@@ -1467,6 +1697,47 @@ func (m *ResultsModel) renderDetailView() string {
 		ui.HelpKeyStyle.Render("q/esc/enter") + ui.HelpDescStyle.Render(" back") +
 		ui.MutedStyle.Render(scrollInfo)
 	b.WriteString(helpText)
+
+	return b.String()
+}
+
+// renderSearchBar renders the search input bar
+func (m *ResultsModel) renderSearchBar() string {
+	var b strings.Builder
+
+	// Search label
+	if m.searchMode {
+		b.WriteString(ui.HeaderStyle.Render("Search: "))
+	} else {
+		b.WriteString(ui.MutedStyle.Render("Search: "))
+	}
+
+	// Search query with cursor
+	if m.searchMode {
+		b.WriteString(ui.SelectedStyle.Render(m.searchQuery + "█"))
+	} else if m.searchQuery != "" {
+		b.WriteString(m.searchQuery)
+	}
+
+	// Match count
+	if m.searchQuery != "" {
+		totalCount := len(m.tableRows)
+		if m.viewMode == TreeView || m.viewMode == AggregatedView {
+			// For tree views, show matching nodes
+			matchInfo := fmt.Sprintf("  [%d matches]", m.searchMatches)
+			b.WriteString(ui.MutedStyle.Render(matchInfo))
+		} else {
+			matchInfo := fmt.Sprintf("  [%d/%d matching]", m.searchMatches, totalCount)
+			b.WriteString(ui.MutedStyle.Render(matchInfo))
+		}
+	}
+
+	// Help text when in search mode
+	if m.searchMode {
+		b.WriteString(ui.MutedStyle.Render("  (Enter to apply, Esc to clear)"))
+	} else if m.searchQuery != "" {
+		b.WriteString(ui.MutedStyle.Render("  (/ to edit, Esc to clear)"))
+	}
 
 	return b.String()
 }
