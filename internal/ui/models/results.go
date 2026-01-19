@@ -419,6 +419,26 @@ func (m *ResultsModel) buildTableData() {
 	results := m.getCurrentResults()
 
 	for _, r := range results {
+		// For errors, use RawStdError instead of AnswerJSON
+		if r.HasError {
+			errorMsg := r.RawStdError
+			if errorMsg == "" {
+				errorMsg = r.AnswerJSON // Fallback to AnswerJSON if no stderr
+			}
+			if errorMsg == "" {
+				errorMsg = "(no error message)"
+			}
+			m.tableRows = append(m.tableRows, TableRow{
+				AgentName: r.AgentName,
+				AgentID:   r.AgentID,
+				Data:      map[string]string{"Error": truncateString(errorMsg, 200)},
+				RowIndex:  0,
+				HasError:  true,
+			})
+			columnSet["Error"] = true
+			continue
+		}
+
 		// Parse JSON
 		var data interface{}
 		if err := json.Unmarshal([]byte(r.AnswerJSON), &data); err != nil {
