@@ -80,8 +80,13 @@ type ResultsModel struct {
 	viewport    viewport.Model
 
 	// Table view state
-	tableSelectedIdx int
+	tableSelectedIdx  int
 	tableScrollOffset int
+
+	// Detail view state
+	showingDetail  bool
+	detailViewport viewport.Model
+	detailContent  string
 
 	// Dimensions
 	width  int
@@ -183,6 +188,24 @@ func (m *ResultsModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
+		// Handle detail view mode separately
+		if m.showingDetail {
+			switch msg.String() {
+			case "q", "esc", "enter":
+				m.showingDetail = false
+				return m, nil
+			case "up", "k":
+				m.detailViewport.LineUp(1)
+			case "down", "j":
+				m.detailViewport.LineDown(1)
+			case "pgup":
+				m.detailViewport.HalfViewUp()
+			case "pgdown":
+				m.detailViewport.HalfViewDown()
+			}
+			return m, nil
+		}
+
 		switch msg.String() {
 		case "q", "ctrl+c":
 			return m, tea.Quit
@@ -212,7 +235,11 @@ func (m *ResultsModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.navigateDown()
 
 		case "enter", " ":
-			m.toggleExpand()
+			if m.viewMode == TableView {
+				m.showDetailView()
+			} else {
+				m.toggleExpand()
+			}
 
 		case "e":
 			if m.viewMode == TreeView || m.viewMode == AggregatedView {
@@ -354,6 +381,105 @@ func (m *ResultsModel) toggleExpand() {
 	case TreeView, AggregatedView:
 		m.treeView.Toggle()
 	}
+}
+
+// showDetailView shows the full details of the selected row
+func (m *ResultsModel) showDetailView() {
+	if m.tableSelectedIdx < 0 || m.tableSelectedIdx >= len(m.tableRows) {
+		return
+	}
+
+	row := m.tableRows[m.tableSelectedIdx]
+
+	// Build detail content
+	var b strings.Builder
+	b.WriteString(ui.HeaderStyle.Render("Agent: " + row.AgentName))
+	b.WriteString("\n\n")
+
+	// Get the original result for full data
+	results := m.getCurrentResults()
+	var originalResult *api.ExecutionResult
+	for i := range results {
+		if results[i].AgentID == row.AgentID {
+			originalResult = &results[i]
+			break
+		}
+	}
+
+	if originalResult != nil {
+		if originalResult.HasError {
+			b.WriteString(ui.ErrorStyle.Render("Error:"))
+			b.WriteString("\n")
+			// Show full error message with word wrapping
+			errorMsg := originalResult.RawStdError
+			if errorMsg == "" {
+				errorMsg = originalResult.AnswerJSON
+			}
+			b.WriteString(wrapText(errorMsg, m.width-4))
+			b.WriteString("\n")
+		} else {
+			// Pretty print JSON
+			var data interface{}
+			if err := json.Unmarshal([]byte(originalResult.AnswerJSON), &data); err == nil {
+				prettyJSON, _ := json.MarshalIndent(data, "", "  ")
+				b.WriteString(string(prettyJSON))
+			} else {
+				b.WriteString(originalResult.AnswerJSON)
+			}
+		}
+	} else {
+		// Fallback to row data
+		for col, val := range row.Data {
+			b.WriteString(ui.HeaderStyle.Render(col + ":"))
+			b.WriteString("\n")
+			b.WriteString(wrapText(val, m.width-4))
+			b.WriteString("\n\n")
+		}
+	}
+
+	m.detailContent = b.String()
+	m.detailViewport = viewport.New(m.width-4, m.height-6)
+	m.detailViewport.SetContent(m.detailContent)
+	m.showingDetail = true
+}
+
+// wrapText wraps text at the specified width
+func wrapText(text string, width int) string {
+	if width <= 0 {
+		width = 80
+	}
+
+	var result strings.Builder
+	lines := strings.Split(text, "\n")
+
+	for _, line := range lines {
+		if len(line) <= width {
+			result.WriteString(line)
+			result.WriteString("\n")
+			continue
+		}
+
+		// Wrap long lines
+		for len(line) > width {
+			// Find a good break point
+			breakPoint := width
+			for i := width; i > width/2; i-- {
+				if line[i] == ' ' {
+					breakPoint = i
+					break
+				}
+			}
+			result.WriteString(line[:breakPoint])
+			result.WriteString("\n")
+			line = strings.TrimPrefix(line[breakPoint:], " ")
+		}
+		if len(line) > 0 {
+			result.WriteString(line)
+			result.WriteString("\n")
+		}
+	}
+
+	return result.String()
 }
 
 // getCurrentResults returns results for the current tab
@@ -981,6 +1107,11 @@ func (m *ResultsModel) View() string {
 		return "Initializing..."
 	}
 
+	// Render detail view if showing
+	if m.showingDetail {
+		return m.renderDetailView()
+	}
+
 	var b strings.Builder
 
 	// Title bar
@@ -1207,4 +1338,42 @@ func formatTimeSince(t time.Time) string {
 		return fmt.Sprintf("%dh", int(d.Hours()))
 	}
 	return fmt.Sprintf("%dd", int(d.Hours()/24))
+}
+
+// renderDetailView renders the full detail view for a selected row
+func (m *ResultsModel) renderDetailView() string {
+	var b strings.Builder
+
+	// Title bar
+	b.WriteString(ui.TitleStyle.Render(" Detail View "))
+	b.WriteString("\n")
+
+	// Divider
+	b.WriteString(ui.MutedStyle.Render(strings.Repeat("─", m.width)))
+	b.WriteString("\n")
+
+	// Viewport content
+	b.WriteString(m.detailViewport.View())
+
+	// Fill remaining space
+	contentLines := strings.Count(m.detailViewport.View(), "\n")
+	for i := contentLines; i < m.height-4; i++ {
+		b.WriteString("\n")
+	}
+
+	// Footer
+	b.WriteString(ui.MutedStyle.Render(strings.Repeat("─", m.width)))
+	b.WriteString("\n")
+
+	// Help text
+	scrollInfo := ""
+	if m.detailViewport.TotalLineCount() > m.detailViewport.Height {
+		scrollInfo = fmt.Sprintf(" (%d/%d) ", m.detailViewport.YOffset+1, m.detailViewport.TotalLineCount()-m.detailViewport.Height+1)
+	}
+	helpText := ui.HelpKeyStyle.Render("↑↓") + ui.HelpDescStyle.Render(" scroll  ") +
+		ui.HelpKeyStyle.Render("q/esc/enter") + ui.HelpDescStyle.Render(" back") +
+		ui.MutedStyle.Render(scrollInfo)
+	b.WriteString(helpText)
+
+	return b.String()
 }

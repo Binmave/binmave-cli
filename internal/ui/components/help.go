@@ -66,9 +66,9 @@ func StandardHelpItems() []HelpItem {
 func TableViewHelpItems() []HelpItem {
 	return []HelpItem{
 		{Key: "↑↓", Desc: "Navigate"},
+		{Key: "Enter", Desc: "Details"},
 		{Key: "Tab", Desc: "Tabs"},
 		{Key: "1/2/3", Desc: "View"},
-		{Key: "Enter", Desc: "Expand"},
 		{Key: "q", Desc: "Quit"},
 	}
 }
