@@ -404,6 +404,8 @@ func (m *ResultsModel) showDetailView() {
 	// Build detail content
 	var b strings.Builder
 	b.WriteString(ui.HeaderStyle.Render("Agent: " + row.AgentName))
+	b.WriteString("\n")
+	b.WriteString(ui.MutedStyle.Render(fmt.Sprintf("Row %d", row.RowIndex+1)))
 	b.WriteString("\n\n")
 
 	// Get the original result for full data
@@ -428,17 +430,29 @@ func (m *ResultsModel) showDetailView() {
 			b.WriteString(wrapText(errorMsg, m.width-4))
 			b.WriteString("\n")
 		} else {
-			// Pretty print JSON
+			// Parse JSON and extract just the selected row's item
 			var data interface{}
 			if err := json.Unmarshal([]byte(originalResult.AnswerJSON), &data); err == nil {
-				prettyJSON, _ := json.MarshalIndent(data, "", "  ")
+				// If it's an array, get just the item at RowIndex
+				var itemToShow interface{}
+				if arr, ok := data.([]interface{}); ok {
+					if row.RowIndex >= 0 && row.RowIndex < len(arr) {
+						itemToShow = arr[row.RowIndex]
+					} else {
+						itemToShow = data // Fallback to full array
+					}
+				} else {
+					itemToShow = data // Single object, show it
+				}
+
+				prettyJSON, _ := json.MarshalIndent(itemToShow, "", "  ")
 				b.WriteString(string(prettyJSON))
 			} else {
 				b.WriteString(originalResult.AnswerJSON)
 			}
 		}
 	} else {
-		// Fallback to row data
+		// Fallback to row data (show all columns with full values)
 		for col, val := range row.Data {
 			b.WriteString(ui.HeaderStyle.Render(col + ":"))
 			b.WriteString("\n")
