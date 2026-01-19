@@ -112,6 +112,38 @@ func (t *TreeView) Toggle() {
 	t.rebuildFlatList()
 }
 
+// Expand expands the currently selected node
+func (t *TreeView) Expand() {
+	if t.selectedIdx >= len(t.flatNodes) {
+		return
+	}
+
+	fn := t.flatNodes[t.selectedIdx]
+	if fn.isAgent && !fn.agent.Expanded {
+		fn.agent.Expanded = true
+		t.rebuildFlatList()
+	} else if fn.node != nil && len(fn.node.Children) > 0 && !fn.node.Expanded {
+		fn.node.Expanded = true
+		t.rebuildFlatList()
+	}
+}
+
+// Collapse collapses the currently selected node
+func (t *TreeView) Collapse() {
+	if t.selectedIdx >= len(t.flatNodes) {
+		return
+	}
+
+	fn := t.flatNodes[t.selectedIdx]
+	if fn.isAgent && fn.agent.Expanded {
+		fn.agent.Expanded = false
+		t.rebuildFlatList()
+	} else if fn.node != nil && fn.node.Expanded {
+		fn.node.Expanded = false
+		t.rebuildFlatList()
+	}
+}
+
 // ExpandAll expands all nodes
 func (t *TreeView) ExpandAll() {
 	for _, agent := range t.agents {

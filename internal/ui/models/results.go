@@ -234,6 +234,16 @@ func (m *ResultsModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "down", "j":
 			m.navigateDown()
 
+		case "right", "l":
+			if m.viewMode == TreeView || m.viewMode == AggregatedView {
+				m.treeView.Expand()
+			}
+
+		case "left", "h":
+			if m.viewMode == TreeView || m.viewMode == AggregatedView {
+				m.treeView.Collapse()
+			}
+
 		case "enter", " ":
 			if m.viewMode == TableView {
 				m.showDetailView()

@@ -76,8 +76,7 @@ func TableViewHelpItems() []HelpItem {
 // TreeViewHelpItems returns help items for tree view
 func TreeViewHelpItems() []HelpItem {
 	return []HelpItem{
-		{Key: "↑↓", Desc: "Navigate"},
-		{Key: "Enter", Desc: "Expand/Collapse"},
+		{Key: "↑↓←→", Desc: "Navigate/Expand"},
 		{Key: "e", Desc: "Expand All"},
 		{Key: "c", Desc: "Collapse All"},
 		{Key: "Tab", Desc: "Tabs"},
@@ -89,8 +88,7 @@ func TreeViewHelpItems() []HelpItem {
 // AggregatedViewHelpItems returns help items for aggregated view
 func AggregatedViewHelpItems() []HelpItem {
 	return []HelpItem{
-		{Key: "↑↓", Desc: "Navigate"},
-		{Key: "Enter", Desc: "Expand/Collapse"},
+		{Key: "↑↓←→", Desc: "Navigate/Expand"},
 		{Key: "a", Desc: "Toggle Anomalies"},
 		{Key: "Tab", Desc: "Tabs"},
 		{Key: "1/2/3", Desc: "View"},
