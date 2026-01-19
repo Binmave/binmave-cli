@@ -35,6 +35,15 @@ const (
 	ErrorsTab
 )
 
+// TableRow represents a flattened row for table display
+type TableRow struct {
+	AgentName string
+	AgentID   string
+	Data      map[string]string
+	RowIndex  int
+	HasError  bool
+}
+
 // ResultsModel is the main TUI model for viewing execution results
 type ResultsModel struct {
 	executionID string
@@ -48,6 +57,11 @@ type ResultsModel struct {
 	errors        []api.ExecutionResult
 	agentTrees    []*components.AgentTree
 	aggregateTree []*components.TreeNode
+
+	// Table data (parsed from JSON)
+	tableRows    []TableRow
+	tableColumns []string
+	isTreeData   bool // True if data is hierarchical (tree/aggregated views applicable)
 
 	// UI State
 	viewMode         ViewMode
@@ -265,7 +279,8 @@ func (m *ResultsModel) nextTab() {
 	m.tableSelectedIdx = 0
 	m.tableScrollOffset = 0
 
-	// Rebuild tree for new tab
+	// Rebuild table and tree for new tab
+	m.buildTableData()
 	if m.currentTab == ErrorsTab {
 		m.rebuildTreeFromErrors()
 	} else {
@@ -297,7 +312,7 @@ func (m *ResultsModel) navigateUp() {
 func (m *ResultsModel) navigateDown() {
 	switch m.viewMode {
 	case TableView:
-		maxIdx := len(m.getCurrentResults()) - 1
+		maxIdx := len(m.tableRows) - 1
 		if m.tableSelectedIdx < maxIdx {
 			m.tableSelectedIdx++
 			m.ensureTableVisible()
@@ -354,7 +369,250 @@ func (m *ResultsModel) processResults() {
 	m.tabBar.UpdateCount(0, len(m.results)-len(m.errors))
 	m.tabBar.UpdateCount(1, len(m.errors))
 
+	// Build table rows from JSON
+	m.buildTableData()
+
+	// Build tree data
 	m.rebuildTreeFromResults()
+
+	// Detect if tree view is applicable
+	m.detectTreeApplicability()
+}
+
+// buildTableData parses JSON results into flat table rows
+func (m *ResultsModel) buildTableData() {
+	m.tableRows = nil
+	m.tableColumns = nil
+	columnSet := make(map[string]bool)
+
+	results := m.getCurrentResults()
+
+	for _, r := range results {
+		// Parse JSON
+		var data interface{}
+		if err := json.Unmarshal([]byte(r.AnswerJSON), &data); err != nil {
+			// Not valid JSON - create a single row with raw value
+			m.tableRows = append(m.tableRows, TableRow{
+				AgentName: r.AgentName,
+				AgentID:   r.AgentID,
+				Data:      map[string]string{"Value": truncateString(r.AnswerJSON, 100)},
+				RowIndex:  0,
+				HasError:  r.HasError,
+			})
+			columnSet["Value"] = true
+			continue
+		}
+
+		// Normalize to array of objects
+		rows := normalizeToRows(data)
+
+		if len(rows) == 0 {
+			// Empty result
+			m.tableRows = append(m.tableRows, TableRow{
+				AgentName: r.AgentName,
+				AgentID:   r.AgentID,
+				Data:      map[string]string{},
+				RowIndex:  0,
+				HasError:  r.HasError,
+			})
+			continue
+		}
+
+		// Create a row for each item
+		for i, row := range rows {
+			flatRow := flattenObject(row, "")
+			for k := range flatRow {
+				columnSet[k] = true
+			}
+
+			m.tableRows = append(m.tableRows, TableRow{
+				AgentName: r.AgentName,
+				AgentID:   r.AgentID,
+				Data:      flatRow,
+				RowIndex:  i,
+				HasError:  r.HasError,
+			})
+		}
+	}
+
+	// Sort columns with common ones first
+	m.tableColumns = sortColumns(columnSet)
+}
+
+// normalizeToRows converts JSON data to array of maps
+func normalizeToRows(data interface{}) []map[string]interface{} {
+	switch v := data.(type) {
+	case []interface{}:
+		var rows []map[string]interface{}
+		for _, item := range v {
+			if m, ok := item.(map[string]interface{}); ok {
+				rows = append(rows, m)
+			}
+		}
+		return rows
+	case map[string]interface{}:
+		return []map[string]interface{}{v}
+	}
+	return nil
+}
+
+// flattenObject flattens nested objects with dot notation
+func flattenObject(obj map[string]interface{}, prefix string) map[string]string {
+	result := make(map[string]string)
+
+	for key, value := range obj {
+		fullKey := key
+		if prefix != "" {
+			fullKey = prefix + "." + key
+		}
+
+		switch v := value.(type) {
+		case map[string]interface{}:
+			// Flatten nested objects
+			nested := flattenObject(v, fullKey)
+			for k, val := range nested {
+				result[k] = val
+			}
+		case []interface{}:
+			// For arrays, show count or first few items
+			if len(v) == 0 {
+				result[fullKey] = "[]"
+			} else if len(v) <= 3 {
+				// Show short arrays inline
+				var items []string
+				for _, item := range v {
+					items = append(items, fmt.Sprintf("%v", item))
+				}
+				result[fullKey] = strings.Join(items, ", ")
+			} else {
+				result[fullKey] = fmt.Sprintf("[%d items]", len(v))
+			}
+		case nil:
+			result[fullKey] = ""
+		default:
+			result[fullKey] = fmt.Sprintf("%v", v)
+		}
+	}
+
+	return result
+}
+
+// sortColumns returns columns sorted with priority columns first
+func sortColumns(columnSet map[string]bool) []string {
+	// Priority columns that should appear first
+	priority := []string{"Name", "name", "User", "user", "Group", "group", "Path", "path",
+		"Value", "value", "Status", "status", "Type", "type", "ID", "id", "Id"}
+
+	var columns []string
+	added := make(map[string]bool)
+
+	// Add priority columns first
+	for _, p := range priority {
+		if columnSet[p] && !added[p] {
+			columns = append(columns, p)
+			added[p] = true
+		}
+	}
+
+	// Add remaining columns alphabetically
+	var remaining []string
+	for col := range columnSet {
+		if !added[col] {
+			remaining = append(remaining, col)
+		}
+	}
+	sort.Strings(remaining)
+	columns = append(columns, remaining...)
+
+	return columns
+}
+
+// detectTreeApplicability checks if tree/aggregated views make sense for this data
+func (m *ResultsModel) detectTreeApplicability() {
+	// Tree view is applicable if:
+	// 1. Data has nested objects/arrays, OR
+	// 2. Data has self-referential structure (parent/child IDs)
+
+	m.isTreeData = false
+
+	results := m.getCurrentResults()
+	if len(results) == 0 {
+		return
+	}
+
+	// Check first result for nested structure
+	var data interface{}
+	if err := json.Unmarshal([]byte(results[0].AnswerJSON), &data); err != nil {
+		return
+	}
+
+	m.isTreeData = hasNestedStructure(data)
+}
+
+// hasNestedStructure checks if data contains nested objects/arrays
+func hasNestedStructure(data interface{}) bool {
+	switch v := data.(type) {
+	case []interface{}:
+		if len(v) == 0 {
+			return false
+		}
+		// Check if array items have nested objects/arrays
+		if first, ok := v[0].(map[string]interface{}); ok {
+			for _, val := range first {
+				switch val.(type) {
+				case map[string]interface{}, []interface{}:
+					return true
+				}
+			}
+			// Also check for self-referential fields (parent/child)
+			return hasSelfReferentialFields(v)
+		}
+	case map[string]interface{}:
+		for _, val := range v {
+			switch val.(type) {
+			case map[string]interface{}, []interface{}:
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// hasSelfReferentialFields checks for parent/child ID relationships
+func hasSelfReferentialFields(rows []interface{}) bool {
+	if len(rows) < 2 {
+		return false
+	}
+
+	first, ok := rows[0].(map[string]interface{})
+	if !ok {
+		return false
+	}
+
+	// Look for common self-referential field patterns
+	parentFields := []string{"ParentId", "parentId", "parent_id", "Parent", "parent", "ParentProcessId", "parentProcessId"}
+	idFields := []string{"Id", "id", "ID", "ProcessId", "processId", "process_id"}
+
+	hasParent := false
+	hasID := false
+
+	for key := range first {
+		keyLower := strings.ToLower(key)
+		for _, p := range parentFields {
+			if strings.EqualFold(key, p) || strings.Contains(keyLower, "parent") {
+				hasParent = true
+				break
+			}
+		}
+		for _, i := range idFields {
+			if strings.EqualFold(key, i) {
+				hasID = true
+				break
+			}
+		}
+	}
+
+	return hasParent && hasID
 }
 
 // rebuildTreeFromResults builds tree view from results
@@ -709,53 +967,135 @@ func (m *ResultsModel) renderContent(height int) string {
 	return ""
 }
 
-// renderTableView renders the table view
+// renderTableView renders the table view with parsed JSON columns
 func (m *ResultsModel) renderTableView(height int) string {
-	results := m.getCurrentResults()
-
-	if len(results) == 0 {
+	if len(m.tableRows) == 0 {
 		return ui.MutedStyle.Render("No results to display")
 	}
 
 	var b strings.Builder
 
+	// Calculate column widths
+	colWidths := m.calculateColumnWidths()
+
 	// Header
-	header := fmt.Sprintf("%-20s │ %-40s │ %-6s │ %-8s",
-		"AGENT", "RESULT", "TIME", "DURATION")
+	var headerParts []string
+	headerParts = append(headerParts, fmt.Sprintf("%-*s", colWidths["_agent"], "AGENT"))
+	for _, col := range m.tableColumns {
+		width := colWidths[col]
+		headerParts = append(headerParts, fmt.Sprintf("%-*s", width, strings.ToUpper(col)))
+	}
+	header := strings.Join(headerParts, " │ ")
 	b.WriteString(ui.HeaderStyle.Render(header))
 	b.WriteString("\n")
-	b.WriteString(ui.MutedStyle.Render(strings.Repeat("─", m.width-2)))
+	b.WriteString(ui.MutedStyle.Render(strings.Repeat("─", min(len(header)+10, m.width-2))))
 	b.WriteString("\n")
 
 	// Rows
 	endIdx := m.tableScrollOffset + height - 4
-	if endIdx > len(results) {
-		endIdx = len(results)
+	if endIdx > len(m.tableRows) {
+		endIdx = len(m.tableRows)
 	}
 
 	for i := m.tableScrollOffset; i < endIdx; i++ {
-		r := results[i]
+		row := m.tableRows[i]
 		isSelected := i == m.tableSelectedIdx
 
-		agentName := truncateString(r.AgentName, 18)
-		resultPreview := truncateString(r.AnswerJSON, 38)
-		timeSince := formatTimeSince(r.ResultReceived)
-		duration := fmt.Sprintf("%ds", r.ExecutionTimeSeconds)
+		var rowParts []string
+		rowParts = append(rowParts, fmt.Sprintf("%-*s", colWidths["_agent"], truncateString(row.AgentName, colWidths["_agent"])))
 
-		row := fmt.Sprintf("%-20s │ %-40s │ %-6s │ %-8s",
-			agentName, resultPreview, timeSince, duration)
+		for _, col := range m.tableColumns {
+			width := colWidths[col]
+			value := row.Data[col]
+			rowParts = append(rowParts, fmt.Sprintf("%-*s", width, truncateString(value, width)))
+		}
+
+		rowStr := strings.Join(rowParts, " │ ")
 
 		if isSelected {
-			b.WriteString(ui.SelectedStyle.Render(row))
-		} else if r.HasError {
-			b.WriteString(ui.ErrorStyle.Render(row))
+			b.WriteString(ui.SelectedStyle.Render(rowStr))
+		} else if row.HasError {
+			b.WriteString(ui.ErrorStyle.Render(rowStr))
 		} else {
-			b.WriteString(row)
+			b.WriteString(rowStr)
 		}
 		b.WriteString("\n")
 	}
 
+	// Show note if tree view not applicable
+	if !m.isTreeData && len(m.tableColumns) > 0 {
+		b.WriteString("\n")
+		b.WriteString(ui.MutedStyle.Render("Note: Tree/Aggregated views not applicable for flat data"))
+	}
+
 	return b.String()
+}
+
+// calculateColumnWidths determines optimal column widths
+func (m *ResultsModel) calculateColumnWidths() map[string]int {
+	widths := make(map[string]int)
+
+	// Agent column
+	widths["_agent"] = 15
+
+	// Start with header widths
+	for _, col := range m.tableColumns {
+		widths[col] = len(col)
+	}
+
+	// Check data widths (sample first 50 rows)
+	sampleSize := min(50, len(m.tableRows))
+	for i := 0; i < sampleSize; i++ {
+		row := m.tableRows[i]
+		if len(row.AgentName) > widths["_agent"] {
+			widths["_agent"] = min(len(row.AgentName), 20)
+		}
+		for col, value := range row.Data {
+			if len(value) > widths[col] {
+				widths[col] = len(value)
+			}
+		}
+	}
+
+	// Cap column widths and distribute available space
+	totalWidth := widths["_agent"] + 3 // Agent + separator
+	for _, col := range m.tableColumns {
+		totalWidth += widths[col] + 3 // Column + separator
+	}
+
+	// If total is too wide, scale down
+	availableWidth := m.width - 4
+	if totalWidth > availableWidth && len(m.tableColumns) > 0 {
+		// Distribute space more evenly
+		perColWidth := (availableWidth - widths["_agent"] - 3) / len(m.tableColumns) - 3
+		if perColWidth < 8 {
+			perColWidth = 8
+		}
+		for _, col := range m.tableColumns {
+			if widths[col] > perColWidth {
+				widths[col] = perColWidth
+			}
+		}
+	}
+
+	// Ensure minimum widths
+	for col := range widths {
+		if widths[col] < 5 {
+			widths[col] = 5
+		}
+		if widths[col] > 40 {
+			widths[col] = 40
+		}
+	}
+
+	return widths
+}
+
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
 }
 
 // Helper functions
