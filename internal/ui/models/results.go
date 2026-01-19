@@ -471,17 +471,28 @@ func wrapText(text string, width int) string {
 
 		// Wrap long lines
 		for len(line) > width {
-			// Find a good break point
+			// Find a good break point (look for space to break at)
 			breakPoint := width
-			for i := width; i > width/2; i-- {
+			if breakPoint >= len(line) {
+				breakPoint = len(line)
+			}
+			// Search backwards for a space
+			for i := breakPoint - 1; i > width/2 && i > 0; i-- {
 				if line[i] == ' ' {
 					breakPoint = i
 					break
 				}
 			}
+			if breakPoint > len(line) {
+				breakPoint = len(line)
+			}
 			result.WriteString(line[:breakPoint])
 			result.WriteString("\n")
-			line = strings.TrimPrefix(line[breakPoint:], " ")
+			if breakPoint < len(line) {
+				line = strings.TrimPrefix(line[breakPoint:], " ")
+			} else {
+				line = ""
+			}
 		}
 		if len(line) > 0 {
 			result.WriteString(line)
@@ -1125,7 +1136,11 @@ func (m *ResultsModel) View() string {
 	var b strings.Builder
 
 	// Title bar
-	title := fmt.Sprintf(" Results: %s ", m.executionID[:8])
+	execID := m.executionID
+	if len(execID) > 8 {
+		execID = execID[:8]
+	}
+	title := fmt.Sprintf(" Results: %s ", execID)
 	b.WriteString(ui.TitleStyle.Render(title))
 	b.WriteString("\n")
 

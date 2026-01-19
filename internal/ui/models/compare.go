@@ -386,7 +386,15 @@ func (m *CompareModel) View() string {
 	var b strings.Builder
 
 	// Title bar
-	title := fmt.Sprintf(" Compare: %s vs %s ", m.executionID[:8], m.baselineID[:8])
+	execID := m.executionID
+	if len(execID) > 8 {
+		execID = execID[:8]
+	}
+	baseID := m.baselineID
+	if len(baseID) > 8 {
+		baseID = baseID[:8]
+	}
+	title := fmt.Sprintf(" Compare: %s vs %s ", execID, baseID)
 	b.WriteString(ui.TitleStyle.Render(title))
 	b.WriteString("\n")
 
