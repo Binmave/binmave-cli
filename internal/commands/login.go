@@ -68,8 +68,8 @@ func runLogin(cmd *cobra.Command, args []string) error {
 	if userInfo.Email != "" {
 		fmt.Printf("  Email: %s\n", userInfo.Email)
 	}
-	if userInfo.Role != "" {
-		fmt.Printf("  Role: %s\n", userInfo.Role)
+	if userInfo.Role() != "" {
+		fmt.Printf("  Role: %s\n", userInfo.Role())
 	}
 
 	return nil
@@ -132,8 +132,8 @@ func runWhoami(cmd *cobra.Command, args []string) error {
 	if userInfo.Email != "" {
 		fmt.Printf("Email: %s\n", userInfo.Email)
 	}
-	if userInfo.Role != "" {
-		fmt.Printf("Role: %s\n", userInfo.Role)
+	if userInfo.Role() != "" {
+		fmt.Printf("Role: %s\n", userInfo.Role())
 	}
 	fmt.Printf("Server: %s\n", config.GetServer())
 	fmt.Printf("Token expires: %s\n", token.ExpiresAt.Format("2006-01-02 15:04:05"))

@@ -313,12 +313,20 @@ func GetUserInfo(token *TokenInfo) (*UserInfo, error) {
 
 // UserInfo represents the user info from the OIDC endpoint
 type UserInfo struct {
-	Sub               string `json:"sub"`
-	Name              string `json:"name"`
-	PreferredUsername string `json:"preferred_username"`
-	Email             string `json:"email"`
-	EmailVerified     bool   `json:"email_verified"`
-	Role              string `json:"role"`
+	Sub               string   `json:"sub"`
+	Name              string   `json:"name"`
+	PreferredUsername string   `json:"preferred_username"`
+	Email             string   `json:"email"`
+	EmailVerified     bool     `json:"email_verified"`
+	Roles             []string `json:"role"` // Can be array of roles
+}
+
+// Role returns the primary role (first one if multiple)
+func (u *UserInfo) Role() string {
+	if len(u.Roles) > 0 {
+		return u.Roles[0]
+	}
+	return ""
 }
 
 // GetDisplayName returns the best display name for the user
