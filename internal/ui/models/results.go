@@ -105,6 +105,11 @@ type resultsMsg struct {
 	err     error
 }
 
+type executionMsg struct {
+	execution *api.Execution
+	err       error
+}
+
 type errMsg struct {
 	err error
 }
@@ -158,9 +163,16 @@ func NewResultsModel(executionID string, client *api.Client) *ResultsModel {
 func (m *ResultsModel) Init() tea.Cmd {
 	return tea.Batch(
 		m.spinner.Tick,
+		m.fetchExecution,
 		m.fetchStatus,
 		m.fetchResults,
 	)
+}
+
+// fetchExecution fetches the execution details (script name, etc.)
+func (m *ResultsModel) fetchExecution() tea.Msg {
+	exec, err := m.client.GetExecution(m.ctx, m.executionID)
+	return executionMsg{execution: exec, err: err}
 }
 
 // fetchStatus fetches the execution status
@@ -278,6 +290,13 @@ func (m *ResultsModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		var cmd tea.Cmd
 		m.spinner, cmd = m.spinner.Update(msg)
 		cmds = append(cmds, cmd)
+
+	case executionMsg:
+		if msg.err != nil {
+			m.err = msg.err
+		} else {
+			m.execution = msg.execution
+		}
 
 	case statusMsg:
 		if msg.err != nil {
@@ -1178,13 +1197,19 @@ func (m *ResultsModel) View() string {
 
 	var b strings.Builder
 
-	// Title bar
+	// Title bar with script info
 	execID := m.executionID
 	if len(execID) > 8 {
 		execID = execID[:8]
 	}
 	title := fmt.Sprintf(" Results: %s ", execID)
 	b.WriteString(ui.TitleStyle.Render(title))
+
+	// Show script name and ID if available
+	if m.execution != nil {
+		scriptInfo := fmt.Sprintf("  %s (ID: %d)", m.execution.ScriptName, m.execution.ScriptID)
+		b.WriteString(ui.MutedStyle.Render(scriptInfo))
+	}
 	b.WriteString("\n")
 
 	// Progress bar
