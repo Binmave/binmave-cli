@@ -194,10 +194,16 @@ func (m *ResultsModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.setViewMode(TableView)
 
 		case "2":
-			m.setViewMode(TreeView)
+			// Only allow Tree view if data is hierarchical
+			if m.isTreeData {
+				m.setViewMode(TreeView)
+			}
 
 		case "3":
-			m.setViewMode(AggregatedView)
+			// Only allow Aggregated view if data is hierarchical
+			if m.isTreeData {
+				m.setViewMode(AggregatedView)
+			}
 
 		case "up", "k":
 			m.navigateUp()
@@ -549,16 +555,19 @@ func (m *ResultsModel) detectTreeApplicability() {
 
 	results := m.getCurrentResults()
 	if len(results) == 0 {
+		m.viewModeBar.SetTreeEnabled(false)
 		return
 	}
 
 	// Check first result for nested structure
 	var data interface{}
 	if err := json.Unmarshal([]byte(results[0].AnswerJSON), &data); err != nil {
+		m.viewModeBar.SetTreeEnabled(false)
 		return
 	}
 
 	m.isTreeData = hasNestedStructure(data)
+	m.viewModeBar.SetTreeEnabled(m.isTreeData)
 }
 
 // hasNestedStructure checks if data contains nested objects/arrays
@@ -1028,12 +1037,6 @@ func (m *ResultsModel) renderTableView(height int) string {
 			b.WriteString(rowStr)
 		}
 		b.WriteString("\n")
-	}
-
-	// Show note if tree view not applicable
-	if !m.isTreeData && len(m.tableColumns) > 0 {
-		b.WriteString("\n")
-		b.WriteString(ui.MutedStyle.Render("Note: Tree/Aggregated views not applicable for flat data"))
 	}
 
 	return b.String()
