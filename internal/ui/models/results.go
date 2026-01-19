@@ -1202,14 +1202,14 @@ func (m *ResultsModel) View() string {
 	if len(execID) > 8 {
 		execID = execID[:8]
 	}
-	title := fmt.Sprintf(" Results: %s ", execID)
-	b.WriteString(ui.TitleStyle.Render(title))
 
-	// Show script name and ID if available
+	var title string
 	if m.execution != nil {
-		scriptInfo := fmt.Sprintf("  %s (ID: %d)", m.execution.ScriptName, m.execution.ScriptID)
-		b.WriteString(ui.MutedStyle.Render(scriptInfo))
+		title = fmt.Sprintf(" %s (ID: %d) - %s ", m.execution.ScriptName, m.execution.ScriptID, execID)
+	} else {
+		title = fmt.Sprintf(" Results: %s ", execID)
 	}
+	b.WriteString(ui.TitleStyle.Render(title))
 	b.WriteString("\n")
 
 	// Progress bar
