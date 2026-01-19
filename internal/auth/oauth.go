@@ -22,7 +22,7 @@ const (
 	ClientID     = "cli"
 	CallbackPort = 8765
 	CallbackPath = "/callback"
-	Scopes       = "openid profile email IdentityServerApi offline_access"
+	Scopes       = "openid profile IdentityServerApi offline_access"
 )
 
 // LoginResult contains the result of a login attempt
