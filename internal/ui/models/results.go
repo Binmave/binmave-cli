@@ -810,11 +810,15 @@ func hasSelfReferentialFields(rows []interface{}) bool {
 
 	// Try each pair of columns to find id/parent relationship
 	for _, idCol := range columns {
-		// Collect all values in the potential ID column
-		idValues := make(map[interface{}]bool)
+		// Collect all values in the potential ID column (as strings to avoid unhashable types)
+		idValues := make(map[string]bool)
 		for _, row := range rowMaps {
-			if val, ok := row[idCol]; ok && val != nil && val != "" {
-				idValues[val] = true
+			if val, ok := row[idCol]; ok && val != nil {
+				// Only use scalar values (strings, numbers) - skip maps and slices
+				strVal := toStringKey(val)
+				if strVal != "" {
+					idValues[strVal] = true
+				}
 			}
 		}
 
@@ -838,11 +842,17 @@ func hasSelfReferentialFields(rows []interface{}) bool {
 				parentVal := row[parentCol]
 
 				// Check for root indicators
-				if parentVal == nil || parentVal == "" || parentVal == 0 || parentVal == float64(0) {
+				if parentVal == nil {
 					validRefs++
 					hasRoot = true
-				} else if idValues[parentVal] {
-					validRefs++
+				} else {
+					strVal := toStringKey(parentVal)
+					if strVal == "" || strVal == "0" {
+						validRefs++
+						hasRoot = true
+					} else if idValues[strVal] {
+						validRefs++
+					}
 				}
 			}
 
@@ -855,6 +865,25 @@ func hasSelfReferentialFields(rows []interface{}) bool {
 	}
 
 	return false
+}
+
+// toStringKey converts a value to a string key, returning empty string for non-scalar types
+func toStringKey(val interface{}) string {
+	switch v := val.(type) {
+	case string:
+		return v
+	case float64:
+		return fmt.Sprintf("%v", v)
+	case int:
+		return fmt.Sprintf("%d", v)
+	case int64:
+		return fmt.Sprintf("%d", v)
+	case bool:
+		return fmt.Sprintf("%t", v)
+	default:
+		// Maps, slices, etc. - not usable as keys
+		return ""
+	}
 }
 
 // rebuildTreeFromResults builds tree view from results (per-agent trees)
