@@ -599,41 +599,82 @@ func hasNestedStructure(data interface{}) bool {
 	return false
 }
 
-// hasSelfReferentialFields checks for parent/child ID relationships
+// hasSelfReferentialFields detects self-referential tree structure by analyzing data values
+// This matches the web frontend's approach: look for a field where values reference another field's values
 func hasSelfReferentialFields(rows []interface{}) bool {
 	if len(rows) < 2 {
 		return false
 	}
 
-	first, ok := rows[0].(map[string]interface{})
-	if !ok {
+	// Convert to maps
+	var rowMaps []map[string]interface{}
+	for _, r := range rows {
+		if m, ok := r.(map[string]interface{}); ok {
+			rowMaps = append(rowMaps, m)
+		}
+	}
+
+	if len(rowMaps) < 2 {
 		return false
 	}
 
-	// Look for common self-referential field patterns
-	parentFields := []string{"ParentId", "parentId", "parent_id", "Parent", "parent", "ParentProcessId", "parentProcessId"}
-	idFields := []string{"Id", "id", "ID", "ProcessId", "processId", "process_id"}
+	// Get column names from first row
+	columns := make([]string, 0)
+	for k := range rowMaps[0] {
+		columns = append(columns, k)
+	}
 
-	hasParent := false
-	hasID := false
+	if len(columns) < 2 {
+		return false
+	}
 
-	for key := range first {
-		keyLower := strings.ToLower(key)
-		for _, p := range parentFields {
-			if strings.EqualFold(key, p) || strings.Contains(keyLower, "parent") {
-				hasParent = true
-				break
+	// Try each pair of columns to find id/parent relationship
+	for _, idCol := range columns {
+		// Collect all values in the potential ID column
+		idValues := make(map[interface{}]bool)
+		for _, row := range rowMaps {
+			if val, ok := row[idCol]; ok && val != nil && val != "" {
+				idValues[val] = true
 			}
 		}
-		for _, i := range idFields {
-			if strings.EqualFold(key, i) {
-				hasID = true
-				break
+
+		// Skip if no valid IDs
+		if len(idValues) == 0 {
+			continue
+		}
+
+		for _, parentCol := range columns {
+			if idCol == parentCol {
+				continue
+			}
+
+			// Count valid references:
+			// - null/nil/empty/0 = root node (valid)
+			// - references an existing ID (valid)
+			validRefs := 0
+			hasRoot := false
+
+			for _, row := range rowMaps {
+				parentVal := row[parentCol]
+
+				// Check for root indicators
+				if parentVal == nil || parentVal == "" || parentVal == 0 || parentVal == float64(0) {
+					validRefs++
+					hasRoot = true
+				} else if idValues[parentVal] {
+					validRefs++
+				}
+			}
+
+			// Must have: 80%+ valid references AND at least one root
+			refRatio := float64(validRefs) / float64(len(rowMaps))
+			if refRatio >= 0.8 && hasRoot {
+				return true
 			}
 		}
 	}
 
-	return hasParent && hasID
+	return false
 }
 
 // rebuildTreeFromResults builds tree view from results
