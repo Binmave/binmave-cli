@@ -31,7 +31,7 @@ jobs:
             suffix: windows-amd64.exe
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Set up Go
         uses: actions/setup-go@v5
@@ -48,7 +48,7 @@ jobs:
             -o binmave-${{ matrix.suffix }} ./cmd/binmave
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: binmave-${{ matrix.suffix }}
           path: binmave-${{ matrix.suffix }}
@@ -63,7 +63,7 @@ jobs:
 
     steps:
       - name: Download all artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v5
         with:
           path: artifacts
 
