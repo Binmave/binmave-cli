@@ -52,6 +52,7 @@ jobs:
         with:
           name: binmave-${{ matrix.suffix }}
           path: binmave-${{ matrix.suffix }}
+          retention-days: 1
 
   release:
     name: Release
