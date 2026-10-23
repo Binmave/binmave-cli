@@ -175,7 +175,8 @@ Uses OAuth2 PKCE flow:
 ## Backend API
 
 Connects to the same backend as the web frontend:
-- Production: `https://dib3oav9kh29t.cloudfront.net`
+- Default: `https://gibson.tailb729f6.ts.net` (self-hosted on gibson, Tailscale-only; the old AWS/CloudFront
+  deployment was decommissioned 2026-10-18). Override with `--server`, `BINMAVE_SERVER` or the config file.
 - Uses Bearer token authentication
 - Auto-refreshes expired tokens
 

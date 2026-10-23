@@ -8,10 +8,12 @@ import (
 )
 
 const (
-	DefaultServer  = "https://dib3oav9kh29t.cloudfront.net"
-	DefaultTimeout = "5m"
-	ConfigDir      = ".binmave"
-	ConfigFile     = "config"
+	// The self-hosted Binmave instance on gibson (Tailscale-only). Override per run with
+	// --server, BINMAVE_SERVER, or `server:` in ~/.binmave/config.yaml.
+	DefaultServer   = "https://gibson.tailb729f6.ts.net"
+	DefaultTimeout  = "5m"
+	ConfigDir       = ".binmave"
+	ConfigFile      = "config"
 	CredentialsFile = "credentials"
 )
 
